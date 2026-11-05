@@ -48,6 +48,18 @@ spec:
           labels:
             app.kubernetes.io/name: gpu-batch
             app.kubernetes.io/component: blender-render
+            # OFF the ambient mesh, deliberately, and only these pods (the
+            # namespace stays enrolled). The print guard must tell "Neptune
+            # is off" (no answer) from "Neptune answered but the state is
+            # unreadable" (fail closed). Under ztunnel, a connect to an
+            # off-mesh LAN host that never answers is accepted locally and
+            # then RESET, so a powered-off printer read as reachable/unknown
+            # and every render was refused (first live run, 2026-11-05:
+            # ConnectionResetError; off-mesh the same probe gives EHOSTUNREACH).
+            # Nothing the pod reaches needs the mesh: the printer is off-mesh,
+            # NFS is a kernel mount, Obico's Postgres is TLS, and n8n and the
+            # API server accept it (verified from an opted-out pod).
+            istio.io/dataplane-mode: none
         spec:
           restartPolicy: Never
           serviceAccountName: gpu-batch-runner
