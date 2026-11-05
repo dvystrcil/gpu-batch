@@ -30,6 +30,8 @@ grep -q 'nvidia.com/gpu: 5' <<<"$cj" || fail "VRAM budget: 5 time-slice units (a
 for v in MOONRAKER_URL OBICO_PG_SECRET GPU_BATCH_NOTIFY_URL; do
   grep -q "name: $v" <<<"$cj" || fail "$v must be set on the template"
 done
+grep -q 'istio.io/dataplane-mode: none' <<<"$cj" \
+  || fail "Job pods must be off the ambient mesh: ztunnel turns a powered-off printer into a connection RESET, which the guard (correctly) reads as reachable/unknown and refuses"
 grep -q 'claimName: gpu-batch-work' <<<"$cj" || fail "the work volume must be mounted"
 grep -q 'runAsUser: 1000' <<<"$cj" || fail "uid 1000 = the laptop user that writes the job dirs"
 
