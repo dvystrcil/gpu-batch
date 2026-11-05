@@ -1,0 +1,107 @@
+# Job TEMPLATE for Blender renders on the GTX 970. Never scheduled.
+#
+# Why a suspended CronJob: it is the one workload kind that (a) holds a full
+# Job spec in git, (b) argocd-image-updater's kustomize writer keeps current,
+# and (c) runs nothing on its own. bin/gpu-batch-submit (dvystrcil/homelab)
+# reads .spec.jobTemplate, sets the job id and spec path, and creates a plain
+# Job from it. It does NOT use `kubectl create job --from=cronjob`, which
+# would write lastScheduleTime onto this object and make it look like it ran.
+#
+# All the bounds live here, reviewed in one place (homelab#1935 AC2):
+#   - k8s-node-03 only (the 970)
+#   - cpu request 500m and NO cpu limit (D-022). node-03 has 3 cores and about
+#     750m unrequested; a `cpu: 1` request stayed Pending in the probe.
+#   - memory: request 3.5Gi / limit 6Gi. The lite-16 render peaked at 3.1 GB
+#     RSS. A hard limit is required (unbounded-pods-are-node-killers).
+#   - nvidia.com/gpu: 5 of the 14 time-slice units (~290 MiB each, ~1.4 GiB).
+#     The measured render peak is ~1.2 GB of VRAM. See
+#     homelab/architecture/gpu-batch-lane.md for who else shares the card.
+#   - activeDeadlineSeconds 3600, and GPU_BATCH_DEADLINE_S matches it, so the
+#     runner times out 120 s early and reports instead of being killed.
+#   - backoffLimit 0: a refused or failed render reports once, and is not
+#     retried behind the reporter's back.
+#   - ttlSecondsAfterFinished 1 day: the Job goes, the results stay on NFS.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: blender-render
+  namespace: gpu-batch
+  labels:
+    app.kubernetes.io/name: gpu-batch
+    app.kubernetes.io/component: blender-render
+    gpu-batch.homelab/template: "true"
+spec:
+  suspend: true
+  # Feb 31 never comes. Belt and braces with suspend: true.
+  schedule: "0 0 31 2 *"
+  jobTemplate:
+    metadata:
+      labels:
+        app.kubernetes.io/name: gpu-batch
+        app.kubernetes.io/component: blender-render
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 3600
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: gpu-batch
+            app.kubernetes.io/component: blender-render
+        spec:
+          restartPolicy: Never
+          serviceAccountName: gpu-batch-runner
+          nodeSelector:
+            kubernetes.io/hostname: k8s-node-03
+          imagePullSecrets:
+            - name: gpu-batch-harbor-pull
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: run
+              image: harbor.sirddail.net/ai/gpu-batch-blender
+              # The submitter replaces this with /work/<job-id>/spec.json.
+              args: ["/work/TEMPLATE/spec.json"]
+              env:
+                - name: MOONRAKER_URL
+                  value: http://192.168.86.243
+                - name: OBICO_PRINTER_NAME
+                  value: Neptune
+                - name: OBICO_PG_SECRET
+                  value: obico/obico-postgres-pguser-gpubatch
+                - name: GPU_BATCH_NOTIFY_URL
+                  value: http://n8n.n8n-workflow.svc.cluster.local/webhook/gpu-batch-complete
+                - name: GPU_BATCH_DEADLINE_S
+                  value: "3600"
+                - name: NODE_NAME
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: spec.nodeName
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                requests:
+                  cpu: 500m
+                  memory: 3584Mi
+                limits:
+                  memory: 6Gi
+                  nvidia.com/gpu: 5
+              volumeMounts:
+                - name: work
+                  mountPath: /work
+                # Blender writes caches and temp files under $HOME and /tmp.
+                - name: scratch
+                  mountPath: /tmp
+          volumes:
+            - name: work
+              persistentVolumeClaim:
+                claimName: gpu-batch-work
+            - name: scratch
+              emptyDir:
+                sizeLimit: 4Gi

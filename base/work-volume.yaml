@@ -1,0 +1,48 @@
+# The work volume: TrueNAS /mnt/pool/media/gpu-batch, the same share the
+# laptop mounts at /mnt/nfs/media. A submitter writes a job directory there
+# and reads the results back with no upload step and no kubectl cp.
+#
+# Static PV, not the nfs-client StorageClass: a provisioned PV gets a random
+# subdirectory under /mnt/pool/nfs-storage that the laptop cannot see.
+#
+# soft, not hard. During a TrueNAS scrub NFS can stall. With `hard`, the
+# render and the runner both block in D state, unkillable, until
+# activeDeadlineSeconds kills the pod without any report. With `soft`, after
+# timeo x retrans (60 s x 3) the I/O fails, the step fails, and the runner
+# reports it. A reported failure beats a silent hang, and output files are
+# re-read and hashed before success, so a short write cannot pass.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: gpu-batch-work
+  labels:
+    app.kubernetes.io/name: gpu-batch
+spec:
+  capacity:
+    storage: 200Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  mountOptions:
+    - nfsvers=4.2
+    - soft
+    - timeo=600
+    - retrans=3
+  nfs:
+    server: 192.168.86.176
+    path: /mnt/pool/media/gpu-batch
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gpu-batch-work
+  namespace: gpu-batch
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: ""
+  volumeName: gpu-batch-work
+  resources:
+    requests:
+      storage: 200Gi

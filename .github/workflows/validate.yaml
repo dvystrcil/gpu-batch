@@ -1,0 +1,16 @@
+name: validate
+on: [pull_request]
+jobs:
+  manifests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # Also guarantees kubectl on PATH for the invariants step below.
+      - uses: dvystrcil/kustomize-validate-action@v1
+      # Schema-valid is not the same as safe: these are the homelab#1935
+      # decisions (template never runs, bounded, guard + completion wired).
+      - name: Render invariants
+        shell: bash
+        run: tests/test-render.sh | tee render.out
+      - name: Assert the invariants check completed
+        run: grep -qx 'RENDER-INVARIANTS-OK' render.out
