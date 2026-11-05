@@ -1,0 +1,13 @@
+resources:
+- ../base
+# The image tag. Bumped by a PR that dvystrcil/gpu-batch-docker's
+# docker-release workflow opens after it promotes a release. Not by
+# argocd-image-updater: IU discovers images from Argo's status.summary.images,
+# which lists running workloads and never a CronJob, so on a CronJob-only app
+# it would sit green and never move the tag (homelab#951).
+#
+# bin/gpu-batch-submit reads the image off the live CronJob, so a merged
+# bump reaches the next Job with nothing else to update.
+images:
+- name: harbor.sirddail.net/ai/gpu-batch-blender
+  newTag: 0.0.1
