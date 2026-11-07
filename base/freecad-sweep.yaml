@@ -9,9 +9,15 @@
 #     memory (architecture/gpu.md), so while a sweep runs, ollama has ~12Gi
 #     less headroom. node-03 (3 CPU / 16 GiB) cannot fit a 10-worker sweep.
 #   - cpu request 10, NO cpu limit (D-022): sweep_toolhead.py runs 10 workers.
-#   - memory request 10Gi / limit 12Gi: the lite-26 probe peaked at 9.45 GiB
-#     (cgroup memory.peak, including page cache; #1961 AC4 FreeCAD comment),
-#     about 1 GiB per worker. Re-measure if the worker count changes.
+#   - memory request 10Gi / limit 12Gi, sized from measured cgroup
+#     memory.peak (including page cache), never guessed (#1961 AC6):
+#       prod dogfood vt350-refresh on lite-26, max-01, 0.0.11 (2026-11-07):
+#         sweep (10 workers) 10,524,459,008 B = 9.80 GiB   <- the sizing peak
+#         derive_stls         1,760,616,448 B = 1.64 GiB
+#         print_area             23,961,600 B
+#       earlier: laptop-docker probes 9.45 GiB (AC4) and 8.78 GiB (sweep).
+#     About 1 GiB per worker. The submitter pins the sweep to 10 workers
+#     (os.cpu_count() in a pod is the node's 32); re-measure if that changes.
 #   - NO nvidia.com/gpu. GPU_BATCH_PRINT_GUARD=off therefore skips the print
 #     guard (gpu-batch-docker#9): the guard protects the GTX 970's VRAM,
 #     which this job cannot reach. With a GPU visible the runner ignores it.
