@@ -16,4 +16,4 @@ The image tag in `overlays/kustomization.yaml` is bumped by a PR from `gpu-batch
 
 Licensed [MIT](LICENSE).
 
-<!-- homelab#1225 bypass test, 2026-11-07: merged by the CICD App with --admin, or refused. This line changes nothing. -->
+<!-- homelab#1225 bypass test, 2026-11-07 (second run, the App identity verified first). This line changes nothing. -->
