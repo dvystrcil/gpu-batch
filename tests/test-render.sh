@@ -41,4 +41,27 @@ grep -q 'path: /mnt/pool/media/gpu-batch' <<<"$pv" || fail "PV must point at /mn
 grep -q -- '- soft' <<<"$pv" || fail "NFS must be soft-mounted: hard hangs unkillably in a scrub stall and nothing reports"
 
 grep -q '^kind: Secret$' <<<"$out" && fail "a literal Secret is rendered; use InfisicalSecret"
+
+# n8n's batch trigger (homelab#1961 AC2). Exact-kind match: `kind: Role`
+# is also a substring of RoleBinding docs and their roleRef.
+kdoc() { awk -v k="$1" 'BEGIN{RS="\n---\n"} $0 ~ ("(^|\n)kind: " k "\n") {print}' <<<"$out"; }
+role=$(kdoc Role)
+[ -n "$role" ] || fail "Role n8n-batch-trigger missing"
+rules=$(sed -n '/^rules:/,$p' <<<"$role" | tr -d ' \n')
+want='rules:-apiGroups:-batchresources:-cronjobsverbs:-get-apiGroups:-batchresources:-jobsverbs:-create-get-apiGroups:-""resources:-podsverbs:-list-apiGroups:-""resources:-pods/logverbs:-get'
+[ "$rules" = "$want" ] || fail "n8n-batch-trigger Role must be exactly: get cronjobs; create,get jobs; list pods; get pods/log (got: $rules)"
+rb=$(kdoc RoleBinding)
+grep -q 'name: n8n-batch-trigger' <<<"$rb" && grep -q 'namespace: n8n-workflow' <<<"$rb" \
+  || fail "RoleBinding must bind the SA n8n-workflow/n8n-batch-trigger"
+
+vap=$(kdoc ValidatingAdmissionPolicy)
+grep -q 'failurePolicy: Fail' <<<"$vap" || fail "the job guard is a safety gate: failurePolicy must be Fail"
+grep -q "request.userInfo.username == 'system:serviceaccount:n8n-workflow:n8n-batch-trigger'" <<<"$vap" \
+  || fail "the job guard must match the n8n-batch-trigger SA"
+grep -q '^  namespace:' <<<"$vap" && fail "the VAP is cluster-scoped: no metadata.namespace (keep it out of base/)"
+vapb=$(kdoc ValidatingAdmissionPolicyBinding)
+grep -q -- '- Deny' <<<"$vapb" || fail "the job guard binding must Deny, not just Warn/Audit"
+
+ns=$(kdoc Namespace)
+grep -q 'pod-security.kubernetes.io/enforce: restricted' <<<"$ns" || fail "gpu-batch must enforce Pod Security restricted"
 echo "RENDER-INVARIANTS-OK"

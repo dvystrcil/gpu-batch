@@ -1,0 +1,95 @@
+# Admission guard on every Job that n8n's batch trigger creates
+# (homelab#1961 AC2). Cluster-scoped; it lives here because it guards this
+# namespace's lane (the same pattern as dvystrcil/arc-runners, whose repo
+# carries the VAPs that guard its own namespaces).
+#
+# Why a VAP and not Pod Security alone: Pod Security `enforce` checks Pods,
+# NOT workload resources ("enforce mode is not applied to workload
+# resources, only to the resulting pod objects", kubernetes.io Pod Security
+# Admission, "Workload resources and Pod templates"). A privileged Job would
+# be ACCEPTED, and only its pod refused later by the Job controller, with
+# nothing reported back to the chain that created it. This policy refuses
+# the Job itself, at create, with a message the chain can show.
+#
+# Scope: only requests whose user is the batch-trigger SA (matchConditions).
+# Cluster admins and the laptop submitter (bin/gpu-batch-submit.py) are not
+# affected. Pod Security `restricted` on the namespace still applies to
+# everyone's pods.
+#
+# failurePolicy: Fail. This is a safety gate: if the policy cannot be
+# evaluated (a CEL error, a missing field the expression did not guard),
+# the request is DENIED, not let through. The cost is a refused chain step,
+# which reports; the cost of fail-open is an unchecked pod spec.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: gpu-batch-trigger-job-guard
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["batch"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["jobs"]
+  matchConditions:
+    - name: is-n8n-batch-trigger
+      expression: request.userInfo.username == 'system:serviceaccount:n8n-workflow:n8n-batch-trigger'
+  variables:
+    - name: ps
+      expression: object.spec.template.spec
+    - name: containers
+      expression: >-
+        variables.ps.containers +
+        (has(variables.ps.initContainers) ? variables.ps.initContainers : []) +
+        (has(variables.ps.ephemeralContainers) ? variables.ps.ephemeralContainers : [])
+  validations:
+    - expression: request.namespace == 'gpu-batch'
+      message: "n8n-batch-trigger may create Jobs only in gpu-batch"
+      reason: Forbidden
+    # Our runner images only: harbor.sirddail.net/ai/gpu-batch-<tool>, with an
+    # optional tag and/or digest. Anchored so a lookalike registry or a
+    # nested path cannot pass a prefix check.
+    - expression: >-
+        variables.containers.all(c,
+          c.image.matches('^harbor\\.sirddail\\.net/ai/gpu-batch-[a-z0-9]+(-[a-z0-9]+)*(:[A-Za-z0-9_][A-Za-z0-9_.-]{0,127})?(@sha256:[a-f0-9]{64})?$'))
+      messageExpression: >-
+        'image not allowed for n8n-batch-trigger Jobs (must be harbor.sirddail.net/ai/gpu-batch-*): ' +
+        variables.containers.map(c, c.image).join(', ')
+      reason: Forbidden
+    - expression: >-
+        (!has(variables.ps.serviceAccountName) || variables.ps.serviceAccountName in ['gpu-batch-runner', 'default']) &&
+        (!has(variables.ps.serviceAccount) || variables.ps.serviceAccount in ['gpu-batch-runner', 'default'])
+      message: "serviceAccountName must be gpu-batch-runner or default"
+      reason: Forbidden
+    - expression: >-
+        has(object.spec.ttlSecondsAfterFinished) &&
+        has(object.spec.activeDeadlineSeconds) && object.spec.activeDeadlineSeconds > 0
+      message: "ttlSecondsAfterFinished and activeDeadlineSeconds must be set (n8n-batch-trigger cannot delete; TTL is the cleanup)"
+      reason: Forbidden
+    - expression: >-
+        !(has(variables.ps.hostNetwork) && variables.ps.hostNetwork) &&
+        !(has(variables.ps.hostPID) && variables.ps.hostPID) &&
+        !(has(variables.ps.hostIPC) && variables.ps.hostIPC)
+      message: "hostNetwork, hostPID and hostIPC are not allowed"
+      reason: Forbidden
+    - expression: >-
+        !has(variables.ps.volumes) || variables.ps.volumes.all(v, !has(v.hostPath))
+      message: "hostPath volumes are not allowed"
+      reason: Forbidden
+    - expression: >-
+        variables.containers.all(c,
+          !has(c.securityContext) ||
+          (!(has(c.securityContext.privileged) && c.securityContext.privileged) &&
+           !(has(c.securityContext.capabilities) && has(c.securityContext.capabilities.add) &&
+             size(c.securityContext.capabilities.add) > 0)))
+      message: "privileged containers and added capabilities are not allowed"
+      reason: Forbidden
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: gpu-batch-trigger-job-guard
+spec:
+  policyName: gpu-batch-trigger-job-guard
+  validationActions: [Deny]
