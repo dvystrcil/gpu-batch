@@ -17,9 +17,9 @@
 # `create jobs` is `create pods`: a Job can run as any SA here and mount any
 # Secret here. The ValidatingAdmissionPolicy in ../cluster/batch-trigger-guard.yaml
 # narrows what this SA's Jobs may contain, and Pod Security `restricted`
-# (namespace.yaml) refuses the resulting pod if anything slips past. What is
-# left, and accepted, is documented in homelab/architecture/gpu-batch-lane.md:
-# a Job run as gpu-batch-runner can read obico's gpubatch DB credentials.
+# (namespace.yaml) refuses the resulting pod if anything slips past. The
+# residual risk that was accepted is recorded in the (private)
+# homelab/architecture/gpu-batch-lane.md.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
