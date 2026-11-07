@@ -5,3 +5,15 @@ metadata:
   labels:
     app.kubernetes.io/part-of: homelab-ops
     istio.io/dataplane-mode: ambient
+    # Pod Security `restricted` (homelab#1961 AC2). Enforce applies to Pods
+    # only, not to Jobs or CronJobs; warn and audit also cover the pod
+    # templates in workload objects, so a non-compliant template shows up at
+    # apply time. The Job-level refusal for n8n's Jobs is the VAP in
+    # cluster/batch-trigger-guard.yaml. Server-side dry run of blender-render's Job
+    # passed before this was enforced.
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest

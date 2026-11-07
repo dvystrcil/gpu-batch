@@ -1,0 +1,8 @@
+# Cluster-scoped objects. Kept out of base/ because base/ sets
+# `namespace: gpu-batch`, and kustomize stamps that onto kinds it does not
+# know are cluster-scoped (ValidatingAdmissionPolicy is one), which Argo then
+# shows as a permanent diff.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - batch-trigger-guard.yaml

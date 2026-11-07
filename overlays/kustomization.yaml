@@ -1,5 +1,6 @@
 resources:
 - ../base
+- ../cluster
 # The image tag. Bumped by a PR that dvystrcil/gpu-batch-docker's
 # docker-release workflow opens after it promotes a release. Not by
 # argocd-image-updater: IU discovers images from Argo's status.summary.images,

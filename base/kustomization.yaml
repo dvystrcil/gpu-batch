@@ -7,3 +7,4 @@ resources:
   - harbor-pull-secret.yaml
   - work-volume.yaml
   - blender-render.yaml
+  - n8n-batch-trigger-rbac.yaml
