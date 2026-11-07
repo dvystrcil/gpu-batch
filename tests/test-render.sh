@@ -7,33 +7,58 @@ cd "$(dirname "$0")/.."
 out=$(kubectl kustomize overlays 2>/dev/null || kustomize build overlays)
 fail() { echo "FAIL: $*"; exit 1; }
 doc() { awk -v k="kind: $1" 'BEGIN{RS="\n---\n"} index($0, k) {print}' <<<"$out"; }
-cj=$(doc CronJob)
+# One doc per Job template, by name. Every template gets the common checks;
+# a check on the concatenation of all of them would pass on either one.
+cron() { awk -v n="  name: $1" 'BEGIN{RS="\n---\n"} /(^|\n)kind: CronJob\n/ && index($0, "\n" n "\n") {print}' <<<"$out"; }
+# The resources.limits block of the (single) container, up to the next key at its indent.
+limits() { awk '/^ *limits:$/{f=1; i=index($0,"l"); next} f{ if (index($0,$1)<=i) exit; print }' <<<"$1"; }
+names=$(awk 'BEGIN{RS="\n---\n"} /(^|\n)kind: CronJob\n/ {if (match($0, /\n  name: [a-z0-9-]+\n/)) print substr($0, RSTART+9, RLENGTH-10)}' <<<"$out")
+[ "$(sort <<<"$names" | tr '\n' ' ')" = "blender-render freecad-sweep " ] \
+  || fail "templates must be exactly blender-render and freecad-sweep (got: $(tr '\n' ' ' <<<"$names")); add the new one's checks below"
 
-# The template must never run by itself.
-grep -q '^  suspend: true$' <<<"$cj" || fail "CronJob must be suspend: true (it is a template)"
-grep -q "schedule: 0 0 31 2 \*" <<<"$cj" || fail "schedule must be the never-firing Feb 31"
+common() {
+  local t=$1 cj; cj=$(cron "$1")
+  [ -n "$cj" ] || fail "$t: template missing"
+  # The template must never run by itself.
+  grep -q '^  suspend: true$' <<<"$cj" || fail "$t: CronJob must be suspend: true (it is a template)"
+  grep -q "schedule: 0 0 31 2 \*" <<<"$cj" || fail "$t: schedule must be the never-firing Feb 31"
+  grep -q 'backoffLimit: 0' <<<"$cj" || fail "$t: backoffLimit must be 0: a refusal must not be retried"
+  grep -q 'ttlSecondsAfterFinished:' <<<"$cj" || fail "$t: ttlSecondsAfterFinished required"
+  local dl env_dl
+  dl=$(sed -n 's/^ *activeDeadlineSeconds: \([0-9]*\)$/\1/p' <<<"$cj")
+  [ -n "$dl" ] || fail "$t: activeDeadlineSeconds required"
+  env_dl=$(grep -A1 'name: GPU_BATCH_DEADLINE_S' <<<"$cj" | sed -n 's/.*value: "\([0-9]*\)"/\1/p')
+  [ "$dl" = "$env_dl" ] || fail "$t: GPU_BATCH_DEADLINE_S ($env_dl) must equal activeDeadlineSeconds ($dl): the runner reports a timeout only if it knows the real deadline"
+  limits "$cj" | grep -q 'memory:' || fail "$t: memory limit required"
+  limits "$cj" | grep -q 'cpu:' && fail "$t: no cpu limit (D-022)"
+  # The guard and the completion channel are wired.
+  for v in MOONRAKER_URL OBICO_PG_SECRET GPU_BATCH_NOTIFY_URL; do
+    grep -q "name: $v" <<<"$cj" || fail "$t: $v must be set on the template"
+  done
+  grep -q 'istio.io/dataplane-mode: none' <<<"$cj" \
+    || fail "$t: Job pods must be off the ambient mesh: ztunnel turns a powered-off printer into a connection RESET, which the guard (correctly) reads as reachable/unknown and refuses"
+  grep -q 'claimName: gpu-batch-work' <<<"$cj" || fail "$t: the work volume must be mounted"
+  grep -q 'runAsUser: 1000' <<<"$cj" || fail "$t: uid 1000 = the laptop user that writes the job dirs"
+  grep -q "image: harbor.sirddail.net/ai/gpu-batch-" <<<"$cj" || fail "$t: image must be a gpu-batch-* Harbor image (the trigger VAP allows only those)"
+}
+common blender-render
+common freecad-sweep
 
-# Bounded (AC2).
-grep -q 'kubernetes.io/hostname: k8s-node-03' <<<"$cj" || fail "must pin to k8s-node-03 (the GTX 970)"
-grep -q 'backoffLimit: 0' <<<"$cj" || fail "backoffLimit must be 0: a refusal must not be retried"
-grep -q 'ttlSecondsAfterFinished:' <<<"$cj" || fail "ttlSecondsAfterFinished required"
-dl=$(sed -n 's/^ *activeDeadlineSeconds: \([0-9]*\)$/\1/p' <<<"$cj")
-[ -n "$dl" ] || fail "activeDeadlineSeconds required"
-env_dl=$(grep -A1 'name: GPU_BATCH_DEADLINE_S' <<<"$cj" | sed -n 's/.*value: "\([0-9]*\)"/\1/p')
-[ "$dl" = "$env_dl" ] || fail "GPU_BATCH_DEADLINE_S ($env_dl) must equal activeDeadlineSeconds ($dl): the runner reports a timeout only if it knows the real deadline"
-grep -A3 'requests:' <<<"$cj" | grep -q 'cpu: 500m' || fail "cpu request must be 500m (node-03 has ~750m unrequested)"
-grep -A3 'limits:' <<<"$cj" | grep -q 'memory:' || fail "memory limit required"
-grep -A3 'limits:' <<<"$cj" | grep -q 'cpu:' && fail "no cpu limit (D-022)"
-grep -q 'nvidia.com/gpu: 5' <<<"$cj" || fail "VRAM budget: 5 time-slice units (architecture/gpu-batch-lane.md); change both together"
+# Blender: the GTX 970 (homelab#1935 AC2).
+b=$(cron blender-render)
+grep -q 'kubernetes.io/hostname: k8s-node-03' <<<"$b" || fail "blender-render: must pin to k8s-node-03 (the GTX 970)"
+grep -A3 'requests:' <<<"$b" | grep -q 'cpu: 500m' || fail "blender-render: cpu request must be 500m (node-03 has ~750m unrequested)"
+limits "$b" | grep -q 'nvidia.com/gpu: 5' || fail "blender-render: VRAM budget: 5 time-slice units (architecture/gpu-batch-lane.md); change both together"
+grep -q 'GPU_BATCH_PRINT_GUARD' <<<"$b" && fail "blender-render: never set GPU_BATCH_PRINT_GUARD on the GPU template (the runner ignores it there anyway)"
 
-# The guard and the completion channel are wired.
-for v in MOONRAKER_URL OBICO_PG_SECRET GPU_BATCH_NOTIFY_URL; do
-  grep -q "name: $v" <<<"$cj" || fail "$v must be set on the template"
-done
-grep -q 'istio.io/dataplane-mode: none' <<<"$cj" \
-  || fail "Job pods must be off the ambient mesh: ztunnel turns a powered-off printer into a connection RESET, which the guard (correctly) reads as reachable/unknown and refuses"
-grep -q 'claimName: gpu-batch-work' <<<"$cj" || fail "the work volume must be mounted"
-grep -q 'runAsUser: 1000' <<<"$cj" || fail "uid 1000 = the laptop user that writes the job dirs"
+# FreeCAD: CPU-only on max-01 (homelab#1974).
+f=$(cron freecad-sweep)
+grep -q 'kubernetes.io/hostname: k8s-node-max-01' <<<"$f" || fail "freecad-sweep: must pin to k8s-node-max-01 (node-03 cannot fit 10 workers)"
+grep -A3 'tolerations:' <<<"$f" | grep -q 'key: ollama' || fail "freecad-sweep: must tolerate max-01's ollama taint"
+grep -q 'nvidia.com/gpu' <<<"$f" && fail "freecad-sweep: CPU-only; a GPU would also re-enable the print guard"
+grep -A1 'name: GPU_BATCH_PRINT_GUARD' <<<"$f" | grep -q 'value: "off"' || fail "freecad-sweep: GPU_BATCH_PRINT_GUARD must be \"off\" (no GPU to protect)"
+grep -A3 'requests:' <<<"$f" | grep -q 'memory: 10Gi' || fail "freecad-sweep: memory request 10Gi, from the 9.45 GiB lite-26 peak"
+limits "$f" | grep -q 'memory: 12Gi' || fail "freecad-sweep: memory limit 12Gi"
 
 # The work volume is the share the laptop mounts.
 pv=$(doc PersistentVolume)

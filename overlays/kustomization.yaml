@@ -12,3 +12,5 @@ resources:
 images:
 - name: harbor.sirddail.net/ai/gpu-batch-blender
   newTag: 0.0.8
+- name: harbor.sirddail.net/ai/gpu-batch-freecad
+  newTag: 0.0.5
