@@ -15,3 +15,5 @@ The image tag in `overlays/kustomization.yaml` is bumped by a PR from `gpu-batch
 `tests/test-render.sh` pins the decisions (template suspended, node-03, `backoffLimit: 0`, deadline equals `GPU_BATCH_DEADLINE_S`, 500m CPU with no CPU limit, memory limit, 5 GPU units, guard and notifier env, soft NFS). Change a value and its test together.
 
 Licensed [MIT](LICENSE).
+
+<!-- homelab#1225 bypass test, 2026-11-07: merged by the CICD App with --admin, or refused. This line changes nothing. -->
