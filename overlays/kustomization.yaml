@@ -11,4 +11,4 @@ resources:
 # bump reaches the next Job with nothing else to update.
 images:
 - name: harbor.sirddail.net/ai/gpu-batch-blender
-  newTag: 0.0.6
+  newTag: 0.0.8
