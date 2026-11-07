@@ -83,8 +83,10 @@ spec:
                   value: http://192.168.86.243
                 - name: OBICO_PRINTER_NAME
                   value: Neptune
+                # CNPG-side Secret since argocd-projects#310 AC4 (obico on
+                # CNPG); same keys the guard reads (host/port/user/password/dbname).
                 - name: OBICO_PG_SECRET
-                  value: obico/obico-postgres-pguser-gpubatch
+                  value: obico/obico-postgres-gpubatch
                 - name: GPU_BATCH_NOTIFY_URL
                   value: http://n8n.n8n-workflow.svc.cluster.local/webhook/gpu-batch-complete
                 - name: GPU_BATCH_DEADLINE_S
