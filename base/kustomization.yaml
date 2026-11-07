@@ -7,4 +7,5 @@ resources:
   - harbor-pull-secret.yaml
   - work-volume.yaml
   - blender-render.yaml
+  - freecad-sweep.yaml
   - n8n-batch-trigger-rbac.yaml

@@ -1,0 +1,115 @@
+# Job TEMPLATE for CPU-only FreeCAD batch work (vt350 clash sweeps; read-only
+# scripts only, #1961 AC9). Never scheduled. Same pattern as blender-render.yaml:
+# a suspended CronJob holding the Job spec; bin/gpu-batch-submit (homelab) and
+# the n8n CUSTOM.kubernetesBatch node create plain Jobs from .spec.jobTemplate.
+#
+# Bounds (homelab#1974):
+#   - k8s-node-max-01, tolerating its ollama=yes:NoSchedule taint (user
+#     decision, 2026-11-07). max-01's RAM is also the ollama GPU's model
+#     memory (architecture/gpu.md), so while a sweep runs, ollama has ~12Gi
+#     less headroom. node-03 (3 CPU / 16 GiB) cannot fit a 10-worker sweep.
+#   - cpu request 10, NO cpu limit (D-022): sweep_toolhead.py runs 10 workers.
+#   - memory request 10Gi / limit 12Gi: the lite-26 probe peaked at 9.45 GiB
+#     (cgroup memory.peak, including page cache; #1961 AC4 FreeCAD comment),
+#     about 1 GiB per worker. Re-measure if the worker count changes.
+#   - NO nvidia.com/gpu. GPU_BATCH_PRINT_GUARD=off therefore skips the print
+#     guard (gpu-batch-docker#9): the guard protects the GTX 970's VRAM,
+#     which this job cannot reach. With a GPU visible the runner ignores it.
+#   - activeDeadlineSeconds 3600 (probe: 900 s), GPU_BATCH_DEADLINE_S matches.
+#   - backoffLimit 0, ttlSecondsAfterFinished 1 day, as blender-render.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: freecad-sweep
+  namespace: gpu-batch
+  labels:
+    app.kubernetes.io/name: gpu-batch
+    app.kubernetes.io/component: freecad-sweep
+    gpu-batch.homelab/template: "true"
+spec:
+  suspend: true
+  # Feb 31 never comes. Belt and braces with suspend: true.
+  schedule: "0 0 31 2 *"
+  jobTemplate:
+    metadata:
+      labels:
+        app.kubernetes.io/name: gpu-batch
+        app.kubernetes.io/component: freecad-sweep
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 3600
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: gpu-batch
+            app.kubernetes.io/component: freecad-sweep
+            # Off the ambient mesh like blender-render: same runner, and the
+            # guard's printer probe (if it ever runs) needs the real
+            # unreachable error, not a ztunnel reset.
+            istio.io/dataplane-mode: none
+        spec:
+          restartPolicy: Never
+          serviceAccountName: gpu-batch-runner
+          nodeSelector:
+            kubernetes.io/hostname: k8s-node-max-01
+          tolerations:
+            - key: ollama
+              operator: Equal
+              value: "yes"
+              effect: NoSchedule
+          imagePullSecrets:
+            - name: gpu-batch-harbor-pull
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: run
+              image: harbor.sirddail.net/ai/gpu-batch-freecad
+              # The submitter replaces this with /work/<job-id>/spec.json.
+              args: ["/work/TEMPLATE/spec.json"]
+              env:
+                - name: GPU_BATCH_PRINT_GUARD
+                  value: "off"
+                # Kept so that, if a GPU were ever visible and the guard ran
+                # anyway, it probes the right printer instead of failing.
+                - name: MOONRAKER_URL
+                  value: http://192.168.86.243
+                - name: OBICO_PRINTER_NAME
+                  value: Neptune
+                - name: OBICO_PG_SECRET
+                  value: obico/obico-postgres-gpubatch
+                - name: GPU_BATCH_NOTIFY_URL
+                  value: http://n8n.n8n-workflow.svc.cluster.local/webhook/gpu-batch-complete
+                - name: GPU_BATCH_DEADLINE_S
+                  value: "3600"
+                - name: NODE_NAME
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: spec.nodeName
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                requests:
+                  cpu: "10"
+                  memory: 10Gi
+                limits:
+                  memory: 12Gi
+              volumeMounts:
+                - name: work
+                  mountPath: /work
+                # FreeCAD writes its user config and temp files under $HOME and /tmp.
+                - name: scratch
+                  mountPath: /tmp
+          volumes:
+            - name: work
+              persistentVolumeClaim:
+                claimName: gpu-batch-work
+            - name: scratch
+              emptyDir:
+                sizeLimit: 4Gi
