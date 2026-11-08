@@ -11,9 +11,9 @@ resources:
 # bump reaches the next Job with nothing else to update.
 images:
 - name: harbor.sirddail.net/ai/gpu-batch-blender
-  newTag: 0.0.11
+  newTag: 0.0.12
 - name: harbor.sirddail.net/ai/gpu-batch-freecad
-  newTag: 0.0.11
+  newTag: 0.0.12
 
 # GPU_BATCH_IMAGE = the container image, tag included, so status.json (and the
 # chain report) names the image that ran. It has to be in the template: n8n's
