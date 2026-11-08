@@ -44,6 +44,32 @@ common() {
 common blender-render
 common freecad-sweep
 
+# The runner records its image in status.json from GPU_BATCH_IMAGE, and a pod
+# cannot read its own image (the Downward API has no image fieldRef). n8n's
+# "Create Job from CronJob" copies the jobTemplate as-is, so the value must be
+# IN the template, equal to the image Argo applies, tag included (gpu-batch#16).
+image_env() {
+  local t=$1 cj img env_img; cj=$(cron "$1")
+  img=$(sed -n 's/^ *image: //p' <<<"$cj")
+  env_img=$(grep -A1 'name: GPU_BATCH_IMAGE$' <<<"$cj" | sed -n 's/^ *value: //p' || true)
+  [ -n "$img" ] || fail "$t: no container image rendered"
+  [[ "$img" == *:* ]] || fail "$t: image $img has no tag: the overlay's images: entry did not apply"
+  [ "$env_img" = "$img" ] \
+    || fail "$t: GPU_BATCH_IMAGE (${env_img:-unset}) must equal the container image ($img); see overlays/ replacements"
+}
+image_env blender-render
+image_env freecad-sweep
+# And it follows a tag bump (the docker-release bot edits only newTag lines):
+# replacements must run on the tag the images: transformer set, not before it.
+tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+cp -r base cluster overlays "$tmp"/
+sed -i 's/^  newTag: .*/  newTag: 9.9.9-render-test/' "$tmp/overlays/kustomization.yaml"
+bumped=$(kubectl kustomize "$tmp/overlays" 2>/dev/null || kustomize build "$tmp/overlays")
+for t in blender-render freecad-sweep; do
+  grep -A1 'name: GPU_BATCH_IMAGE$' <<<"$(out=$bumped cron "$t")" | grep -q "value: .*:9.9.9-render-test$" \
+    || fail "$t: GPU_BATCH_IMAGE did not follow a newTag bump"
+done
+
 # Blender: the GTX 970 (homelab#1935 AC2).
 b=$(cron blender-render)
 grep -q 'kubernetes.io/hostname: k8s-node-03' <<<"$b" || fail "blender-render: must pin to k8s-node-03 (the GTX 970)"

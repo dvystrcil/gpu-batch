@@ -91,6 +91,12 @@ spec:
                   value: http://n8n.n8n-workflow.svc.cluster.local/webhook/gpu-batch-complete
                 - name: GPU_BATCH_DEADLINE_S
                   value: "3600"
+                # What status.json reports as "image". A pod cannot read its
+                # own image (no Downward API fieldRef), and n8n copies this
+                # template as-is, so overlays/ replacements copy the tagged
+                # image here (gpu-batch#16). This value never ships.
+                - name: GPU_BATCH_IMAGE
+                  value: set-by-overlays-replacements
                 - name: NODE_NAME
                   valueFrom:
                     fieldRef:

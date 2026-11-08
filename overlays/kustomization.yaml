@@ -14,3 +14,30 @@ images:
   newTag: 0.0.11
 - name: harbor.sirddail.net/ai/gpu-batch-freecad
   newTag: 0.0.11
+
+# GPU_BATCH_IMAGE = the container image, tag included, so status.json (and the
+# chain report) names the image that ran. It has to be in the template: n8n's
+# "Create Job from CronJob" copies the jobTemplate, and a pod cannot read its
+# own image (gpu-batch#16). Replacements run after the images: transformer, so
+# they copy the bumped tag; tests/test-render.sh checks that on a fake bump.
+replacements:
+- source:
+    kind: CronJob
+    name: blender-render
+    fieldPath: spec.jobTemplate.spec.template.spec.containers.[name=run].image
+  targets:
+  - select:
+      kind: CronJob
+      name: blender-render
+    fieldPaths:
+    - spec.jobTemplate.spec.template.spec.containers.[name=run].env.[name=GPU_BATCH_IMAGE].value
+- source:
+    kind: CronJob
+    name: freecad-sweep
+    fieldPath: spec.jobTemplate.spec.template.spec.containers.[name=run].image
+  targets:
+  - select:
+      kind: CronJob
+      name: freecad-sweep
+    fieldPaths:
+    - spec.jobTemplate.spec.template.spec.containers.[name=run].env.[name=GPU_BATCH_IMAGE].value
