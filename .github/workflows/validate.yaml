@@ -4,7 +4,7 @@ jobs:
   manifests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       # Also guarantees kubectl on PATH for the invariants step below.
       - uses: dvystrcil/kustomize-validate-action@v1
       # Schema-valid is not the same as safe: these are the homelab#1935
