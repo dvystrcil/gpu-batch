@@ -72,8 +72,9 @@ done
 
 # Blender: the GTX 970 (homelab#1935 AC2).
 b=$(cron blender-render)
-grep -q 'kubernetes.io/hostname: k8s-node-03' <<<"$b" || fail "blender-render: must pin to k8s-node-03 (the GTX 970)"
-grep -A3 'requests:' <<<"$b" | grep -q 'cpu: 500m' || fail "blender-render: cpu request must be 500m (node-03 has ~750m unrequested)"
+grep -q 'homelab/role: small-model-gpu' <<<"$b" || fail "blender-render: must select homelab/role=small-model-gpu (the node holding the GTX 970; k8s-node-01 since homelab#2119)"
+grep -q 'kubernetes.io/hostname' <<<"$b" && fail "blender-render: must not pin a hostname; the GPU moves with the label (homelab#2119)"
+grep -A3 'requests:' <<<"$b" | grep -q 'cpu: 500m' || fail "blender-render: cpu request must be 500m"
 limits "$b" | grep -q 'nvidia.com/gpu: 5' || fail "blender-render: VRAM budget: 5 time-slice units (architecture/gpu-batch-lane.md); change both together"
 grep -q 'GPU_BATCH_PRINT_GUARD' <<<"$b" && fail "blender-render: never set GPU_BATCH_PRINT_GUARD on the GPU template (the runner ignores it there anyway)"
 
