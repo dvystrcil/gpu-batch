@@ -1,6 +1,6 @@
 # gpu-batch
 
-Deploy repo for the **GPU batch lane** on the GTX 970 (`k8s-node-03`) ([homelab#1935](https://github.com/dvystrcil/homelab/issues/1935); design in [`homelab/architecture/gpu-batch-lane.md`](https://github.com/dvystrcil/homelab/blob/main/architecture/gpu-batch-lane.md)). Synced by Argo CD (`argocd-projects/gpu-batch`). **Nothing here runs by itself.**
+Deploy repo for the **GPU batch lane** on the GTX 970 (`homelab/role=small-model-gpu`, k8s-node-01 since homelab#2119) ([homelab#1935](https://github.com/dvystrcil/homelab/issues/1935); design in [`homelab/architecture/gpu-batch-lane.md`](https://github.com/dvystrcil/homelab/blob/main/architecture/gpu-batch-lane.md)). Synced by Argo CD (`argocd-projects/gpu-batch`). **Nothing here runs by itself.**
 
 | Object | Purpose |
 |---|---|
@@ -12,7 +12,7 @@ Deploy repo for the **GPU batch lane** on the GTX 970 (`k8s-node-03`) ([homelab#
 
 The image tag in `overlays/kustomization.yaml` is bumped by a PR from `gpu-batch-docker`'s release workflow. argocd-image-updater can't see CronJobs (homelab#951).
 
-`tests/test-render.sh` pins the decisions (template suspended, node-03, `backoffLimit: 0`, deadline equals `GPU_BATCH_DEADLINE_S`, 500m CPU with no CPU limit, memory limit, 5 GPU units, guard and notifier env, soft NFS). Change a value and its test together.
+`tests/test-render.sh` pins the decisions (template suspended, the GPU role label, `backoffLimit: 0`, deadline equals `GPU_BATCH_DEADLINE_S`, 500m CPU with no CPU limit, memory limit, 5 GPU units, guard and notifier env, soft NFS). Change a value and its test together.
 
 Licensed [MIT](LICENSE).
 

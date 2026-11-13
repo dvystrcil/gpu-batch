@@ -8,9 +8,11 @@
 # would write lastScheduleTime onto this object and make it look like it ran.
 #
 # All the bounds live here, reviewed in one place (homelab#1935 AC2):
-#   - k8s-node-03 only (the 970)
-#   - cpu request 500m and NO cpu limit (D-022). node-03 has 3 cores and about
-#     750m unrequested; a `cpu: 1` request stayed Pending in the probe.
+#   - the GTX 970's node only, by homelab/role=small-model-gpu (k8s-node-01
+#     since homelab#2119; was a node-03 hostname pin). No hostname: the card
+#     moves with the label.
+#   - cpu request 500m and NO cpu limit (D-022). Sized when node-03 had 3 cores
+#     and ~750m unrequested; a `cpu: 1` request stayed Pending in that probe.
 #   - memory: request 3.5Gi / limit 6Gi. The lite-16 render peaked at 3.1 GB
 #     RSS. A hard limit is required (unbounded-pods-are-node-killers).
 #   - nvidia.com/gpu: 5 of the 14 time-slice units (~290 MiB each, ~1.4 GiB).
@@ -64,7 +66,7 @@ spec:
           restartPolicy: Never
           serviceAccountName: gpu-batch-runner
           nodeSelector:
-            kubernetes.io/hostname: k8s-node-03
+            homelab/role: small-model-gpu
           imagePullSecrets:
             - name: gpu-batch-harbor-pull
           securityContext:
