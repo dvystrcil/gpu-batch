@@ -23,6 +23,9 @@
 #   - backoffLimit 0: a refused or failed render reports once, and is not
 #     retried behind the reporter's back.
 #   - ttlSecondsAfterFinished 1 day: the Job goes, the results stay on NFS.
+#   - priorityClassName gpu-batch (cluster/priorityclass.yaml): the render
+#     may preempt default-priority pods on the GPU node rather than stay
+#     Pending when that node's memory requests are full (2026-11-15).
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -65,6 +68,7 @@ spec:
         spec:
           restartPolicy: Never
           serviceAccountName: gpu-batch-runner
+          priorityClassName: gpu-batch
           nodeSelector:
             homelab/role: small-model-gpu
           imagePullSecrets:
