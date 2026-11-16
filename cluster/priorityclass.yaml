@@ -1,0 +1,32 @@
+# Priority for gpu-batch render Jobs. Cluster-scoped, so it lives in
+# cluster/ (see kustomization.yaml there).
+#
+# Why: blender-render can only run on the one homelab/role=small-model-gpu
+# node (k8s-node-01), and that node's memory REQUESTS are usually ~86%
+# full of always-on services. On 2026-11-15 a lite-44 render (3584Mi)
+# sat Pending with "Insufficient memory ... No preemption victims found":
+# ~3189Mi was unrequested and every pod was priority 0, so the scheduler
+# had nothing it was allowed to evict.
+#
+# With this class the scheduler may evict default-priority (0) pods on that
+# node to fit the render. Their controllers recreate them on another node
+# (hpm-01 had ~70% free at the time). It picks the fewest, lowest-priority,
+# most recently started victims, and avoids PDB-protected ones (the CNPG
+# primaries all have a minAvailable 1 PDB) when it can; PDBs are
+# best-effort under preemption, not a guarantee.
+#
+# Value 1000: above default (0), far below longhorn-critical (1e9) and the
+# system-* classes (2e9), so it never competes with cluster plumbing.
+# globalDefault false: only templates that name it get it.
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: gpu-batch
+  labels:
+    app.kubernetes.io/name: gpu-batch
+value: 1000
+globalDefault: false
+preemptionPolicy: PreemptLowerPriority
+description: >-
+  gpu-batch Jobs that must land on the single GPU node; may preempt
+  default-priority pods there. See dvystrcil/gpu-batch cluster/priorityclass.yaml.

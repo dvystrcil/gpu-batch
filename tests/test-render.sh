@@ -76,6 +76,7 @@ grep -q 'homelab/role: small-model-gpu' <<<"$b" || fail "blender-render: must se
 grep -q 'kubernetes.io/hostname' <<<"$b" && fail "blender-render: must not pin a hostname; the GPU moves with the label (homelab#2119)"
 grep -A3 'requests:' <<<"$b" | grep -q 'cpu: 500m' || fail "blender-render: cpu request must be 500m"
 limits "$b" | grep -q 'nvidia.com/gpu: 5' || fail "blender-render: VRAM budget: 5 time-slice units (architecture/gpu-batch-lane.md); change both together"
+grep -q 'priorityClassName: gpu-batch' <<<"$b" || fail "blender-render: priorityClassName gpu-batch, so the render can preempt default-priority pods on the one GPU node instead of staying Pending"
 grep -q 'GPU_BATCH_PRINT_GUARD' <<<"$b" && fail "blender-render: never set GPU_BATCH_PRINT_GUARD on the GPU template (the runner ignores it there anyway)"
 
 # FreeCAD: CPU-only on max-01 (homelab#1974).
@@ -113,6 +114,11 @@ grep -q "request.userInfo.username == 'system:serviceaccount:n8n-workflow:n8n-ba
 grep -q '^  namespace:' <<<"$vap" && fail "the VAP is cluster-scoped: no metadata.namespace (keep it out of base/)"
 vapb=$(kdoc ValidatingAdmissionPolicyBinding)
 grep -q -- '- Deny' <<<"$vapb" || fail "the job guard binding must Deny, not just Warn/Audit"
+
+pc=$(kdoc PriorityClass)
+grep -q 'name: gpu-batch' <<<"$pc" || fail "PriorityClass gpu-batch must be rendered (cluster/priorityclass.yaml)"
+grep -q 'globalDefault: false' <<<"$pc" || fail "PriorityClass gpu-batch must not be the global default"
+grep -q '^  namespace:' <<<"$pc" && fail "PriorityClass is cluster-scoped: no metadata.namespace (keep it out of base/)"
 
 ns=$(kdoc Namespace)
 grep -q 'pod-security.kubernetes.io/enforce: restricted' <<<"$ns" || fail "gpu-batch must enforce Pod Security restricted"
