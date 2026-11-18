@@ -98,14 +98,28 @@ grep -q '^kind: Secret$' <<<"$out" && fail "a literal Secret is rendered; use In
 # n8n's batch trigger (homelab#1961 AC2). Exact-kind match: `kind: Role`
 # is also a substring of RoleBinding docs and their roleRef.
 kdoc() { awk -v k="$1" 'BEGIN{RS="\n---\n"} $0 ~ ("(^|\n)kind: " k "\n") {print}' <<<"$out"; }
-role=$(kdoc Role)
+# One doc of a kind BY NAME: two Roles live here since gpu-batch#33, and a check
+# on both concatenated would pass on either one.
+kname() { awk -v k="$1" -v n="  name: $2" 'BEGIN{RS="\n---\n"} $0 ~ ("(^|\n)kind: " k "\n") && index($0, "\n" n "\n") {print}' <<<"$out"; }
+role=$(kname Role n8n-batch-trigger)
 [ -n "$role" ] || fail "Role n8n-batch-trigger missing"
 rules=$(sed -n '/^rules:/,$p' <<<"$role" | tr -d ' \n')
 want='rules:-apiGroups:-batchresources:-cronjobsverbs:-get-apiGroups:-batchresources:-jobsverbs:-create-get-apiGroups:-""resources:-podsverbs:-list-apiGroups:-""resources:-pods/logverbs:-get'
 [ "$rules" = "$want" ] || fail "n8n-batch-trigger Role must be exactly: get cronjobs; create,get jobs; list pods; get pods/log (got: $rules)"
-rb=$(kdoc RoleBinding)
+rb=$(kname RoleBinding n8n-batch-trigger)
 grep -q 'name: n8n-batch-trigger' <<<"$rb" && grep -q 'namespace: n8n-workflow' <<<"$rb" \
   || fail "RoleBinding must bind the SA n8n-workflow/n8n-batch-trigger"
+
+# The watchdog (gpu-batch#33): REPORTS, never cancels. Read-only, exactly this.
+wrole=$(kname Role gpu-batch-watchdog)
+[ -n "$wrole" ] || fail "Role gpu-batch-watchdog missing (base/watchdog-rbac.yaml)"
+wrules=$(sed -n '/^rules:/,$p' <<<"$wrole" | tr -d ' \n')
+wwant='rules:-apiGroups:-batchresources:-jobsverbs:-get-list-apiGroups:-""resources:-podsverbs:-get-list-apiGroups:-""resources:-eventsverbs:-list'
+[ "$wrules" = "$wwant" ] || fail "gpu-batch-watchdog Role must be exactly: get,list jobs; get,list pods; list events, read-only, never delete/patch (got: $wrules)"
+wsub=$(sed -n '/^subjects:/,$p' <<<"$(kname RoleBinding gpu-batch-watchdog)" | tr -d ' \n')
+[ "$wsub" = "subjects:-kind:ServiceAccountname:gpu-batch-watchdognamespace:gpu-batch" ] \
+  || fail "RoleBinding gpu-batch-watchdog must bind the SA gpu-batch/gpu-batch-watchdog"
+[ -n "$(kname ServiceAccount gpu-batch-watchdog)" ] || fail "ServiceAccount gpu-batch-watchdog missing"
 
 vap=$(kdoc ValidatingAdmissionPolicy)
 grep -q 'failurePolicy: Fail' <<<"$vap" || fail "the job guard is a safety gate: failurePolicy must be Fail"

@@ -9,3 +9,4 @@ resources:
   - blender-render.yaml
   - freecad-sweep.yaml
   - n8n-batch-trigger-rbac.yaml
+  - watchdog-rbac.yaml
