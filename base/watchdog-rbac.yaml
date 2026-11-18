@@ -1,0 +1,52 @@
+# What the gpu-batch watchdog may do in this namespace (gpu-batch#33).
+#
+# The watchdog is a CronJob in this namespace, deployed from
+# dvystrcil/cluster-ops (gpu-batch-watchdog/), so homelab-bin's tag is bumped
+# with the other homelab-bin CronJobs. Its identity and its grant live here,
+# in the namespace's CD repo (rbac-ownership).
+#
+# It REPORTS, it never cancels (owner's decision, 2026-11-18). The grant is
+# read-only, and nothing else:
+#   - get, list jobs    find gpu-batch Jobs and how they ended
+#   - get, list pods    the newest pod: PodScheduled, DisruptionTarget, Evicted
+#   - list events       the scheduler's / kubelet's message (FailedScheduling,
+#                       Evicted, Preempted); events last 1 h
+# No delete or patch on Jobs, no create, no secrets, no pods/log. The notices
+# go to n8n's in-cluster gpu-batch-complete webhook, which needs no credential.
+# What it writes is <job dir>/watchdog.json on the work share (the PVC), not
+# anything in the API.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gpu-batch-watchdog
+  namespace: gpu-batch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: gpu-batch-watchdog
+  namespace: gpu-batch
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: gpu-batch-watchdog
+  namespace: gpu-batch
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: gpu-batch-watchdog
+subjects:
+  - kind: ServiceAccount
+    name: gpu-batch-watchdog
+    namespace: gpu-batch

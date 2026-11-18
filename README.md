@@ -9,6 +9,7 @@ Deploy repo for the **GPU batch lane** on the GTX 970 (`homelab/role=small-model
 | `CronJob blender-render` | the **Job template**: suspended, never scheduled. `homelab/bin/gpu-batch-submit.py` creates Jobs from its `jobTemplate`. All the bounds live here |
 | `ServiceAccount gpu-batch-runner` | the only grant is `get` on one Obico Secret (in `dvystrcil/obico`) |
 | `InfisicalSecret gpu-batch-harbor-pull` | image pull |
+| `ServiceAccount/Role/RoleBinding gpu-batch-watchdog` | read-only (get/list Jobs and pods, list events) for the watchdog CronJob that `dvystrcil/cluster-ops` `gpu-batch-watchdog/` runs here: it reports never-scheduled / evicted / preempted Jobs to their notify target and never cancels anything ([gpu-batch#33](https://github.com/dvystrcil/gpu-batch/issues/33)) |
 
 The image tag in `overlays/kustomization.yaml` is bumped by a PR from `gpu-batch-docker`'s release workflow. argocd-image-updater can't see CronJobs (homelab#951).
 
