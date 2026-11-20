@@ -13,7 +13,7 @@ Deploy repo for the **GPU batch lane** on the GTX 970 (`homelab/role=small-model
 
 The image tag in `overlays/kustomization.yaml` is bumped by a PR from `gpu-batch-docker`'s release workflow. argocd-image-updater can't see CronJobs (homelab#951).
 
-`tests/test-render.sh` pins the decisions (template suspended, the GPU role label, `backoffLimit: 0`, deadline equals `GPU_BATCH_DEADLINE_S`, 500m CPU with no CPU limit, memory limit, 5 GPU units, guard and notifier env, soft NFS). Change a value and its test together.
+`tests/test-render.sh` pins the decisions (template suspended, the GPU role label, `backoffLimit: 0`, the pod's deadline (the run limit) equals `GPU_BATCH_DEADLINE_S` and the Job's adds a 2 h wait bound in Pending, 500m CPU with no CPU limit, memory limit, 5 GPU units, guard and notifier env, soft NFS). Change a value and its test together.
 
 Licensed [MIT](LICENSE).
 

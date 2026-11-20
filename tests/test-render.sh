@@ -24,11 +24,22 @@ common() {
   grep -q "schedule: 0 0 31 2 \*" <<<"$cj" || fail "$t: schedule must be the never-firing Feb 31"
   grep -q 'backoffLimit: 0' <<<"$cj" || fail "$t: backoffLimit must be 0: a refusal must not be retried"
   grep -q 'ttlSecondsAfterFinished:' <<<"$cj" || fail "$t: ttlSecondsAfterFinished required"
-  local dl env_dl
-  dl=$(sed -n 's/^ *activeDeadlineSeconds: \([0-9]*\)$/\1/p' <<<"$cj")
-  [ -n "$dl" ] || fail "$t: activeDeadlineSeconds required"
+  # Two deadlines (gpu-batch#52). The POD's (jobTemplate.spec.template.spec,
+  # indent 10) is the run limit: the kubelet counts it from the pod's
+  # startTime, so time spent Pending does not use it up. The JOB's
+  # (jobTemplate.spec, indent 6) counts from Job creation, Pending included:
+  # it is run + the wait bound. The writers (homelab bin/gpu-batch-submit.py,
+  # n8n-nodes-k8s createJobFromCronJob) read the wait bound as Job - pod, so
+  # it lives only here.
+  local dl pdl env_dl
+  dl=$(sed -n 's/^      activeDeadlineSeconds: \([0-9]*\)$/\1/p' <<<"$cj")
+  pdl=$(sed -n 's/^          activeDeadlineSeconds: \([0-9]*\)$/\1/p' <<<"$cj")
+  [ -n "$dl" ] || fail "$t: Job activeDeadlineSeconds required (the batch-trigger VAP refuses a Job without one)"
+  [ -n "$pdl" ] || fail "$t: pod activeDeadlineSeconds required: it is the run limit, which Pending time must not use up (gpu-batch#52)"
+  [ "$((dl - pdl))" = 7200 ] \
+    || fail "$t: Job deadline ($dl) must be the pod's ($pdl) + 7200 s: the wait bound in Pending, 2 h (gpu-batch#52, user 2026-11-20)"
   env_dl=$(grep -A1 'name: GPU_BATCH_DEADLINE_S' <<<"$cj" | sed -n 's/.*value: "\([0-9]*\)"/\1/p')
-  [ "$dl" = "$env_dl" ] || fail "$t: GPU_BATCH_DEADLINE_S ($env_dl) must equal activeDeadlineSeconds ($dl): the runner reports a timeout only if it knows the real deadline"
+  [ "$pdl" = "$env_dl" ] || fail "$t: GPU_BATCH_DEADLINE_S ($env_dl) must equal the pod's activeDeadlineSeconds ($pdl): the runner reports a timeout only if it knows the real deadline"
   limits "$cj" | grep -q 'memory:' || fail "$t: memory limit required"
   limits "$cj" | grep -q 'cpu:' && fail "$t: no cpu limit (D-022)"
   # The guard and the completion channel are wired.

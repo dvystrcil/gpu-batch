@@ -27,7 +27,9 @@
 #   - NO nvidia.com/gpu. GPU_BATCH_PRINT_GUARD=off therefore skips the print
 #     guard (gpu-batch-docker#9): the guard protects the GTX 970's VRAM,
 #     which this job cannot reach. With a GPU visible the runner ignores it.
-#   - activeDeadlineSeconds 3600 (probe: 900 s), GPU_BATCH_DEADLINE_S matches.
+#   - pod activeDeadlineSeconds 3600 (probe: 900 s) = the run limit,
+#     GPU_BATCH_DEADLINE_S matches; Job's 10800 = run + 2 h wait bound in
+#     Pending, as blender-render (gpu-batch#52).
 #   - backoffLimit 0, ttlSecondsAfterFinished 1 day, as blender-render.
 apiVersion: batch/v1
 kind: CronJob
@@ -49,7 +51,8 @@ spec:
         app.kubernetes.io/component: freecad-sweep
     spec:
       backoffLimit: 0
-      activeDeadlineSeconds: 3600
+      # Run limit 3600 (pod, below) + 7200 wait bound in Pending (gpu-batch#52).
+      activeDeadlineSeconds: 10800
       ttlSecondsAfterFinished: 86400
       template:
         metadata:
@@ -62,6 +65,9 @@ spec:
             istio.io/dataplane-mode: none
         spec:
           restartPolicy: Never
+          # The run limit. The kubelet counts it from the pod's startTime, so
+          # time spent Pending does not use it up (gpu-batch#52).
+          activeDeadlineSeconds: 3600
           serviceAccountName: gpu-batch-runner
           nodeSelector:
             kubernetes.io/hostname: k8s-node-max-01

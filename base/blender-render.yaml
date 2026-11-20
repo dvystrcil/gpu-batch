@@ -18,8 +18,13 @@
 #   - nvidia.com/gpu: 5 of the 14 time-slice units (~290 MiB each, ~1.4 GiB).
 #     The measured render peak is ~1.2 GB of VRAM. See
 #     homelab/architecture/gpu-batch-lane.md for who else shares the card.
-#   - activeDeadlineSeconds 3600, and GPU_BATCH_DEADLINE_S matches it, so the
-#     runner times out 120 s early and reports instead of being killed.
+#   - two deadlines (gpu-batch#52). The POD's activeDeadlineSeconds 3600 is
+#     the run limit: it counts from the pod's start, so a long Pending wait
+#     does not use it up. GPU_BATCH_DEADLINE_S matches it, so the runner times
+#     out 120 s early and reports instead of being killed. The JOB's 10800 is
+#     that + a 7200 s (2 h) wait bound in Pending: it counts from Job creation,
+#     and the batch-trigger VAP requires it. The submitters read the wait bound
+#     as Job - pod and keep it when they override the run limit.
 #   - backoffLimit 0: a refused or failed render reports once, and is not
 #     retried behind the reporter's back.
 #   - ttlSecondsAfterFinished 1 day: the Job goes, the results stay on NFS.
@@ -46,7 +51,8 @@ spec:
         app.kubernetes.io/component: blender-render
     spec:
       backoffLimit: 0
-      activeDeadlineSeconds: 3600
+      # Run limit 3600 (pod, below) + 7200 wait bound in Pending (gpu-batch#52).
+      activeDeadlineSeconds: 10800
       ttlSecondsAfterFinished: 86400
       template:
         metadata:
@@ -67,6 +73,9 @@ spec:
             istio.io/dataplane-mode: none
         spec:
           restartPolicy: Never
+          # The run limit. The kubelet counts it from the pod's startTime, so
+          # time spent Pending does not use it up (gpu-batch#52).
+          activeDeadlineSeconds: 3600
           serviceAccountName: gpu-batch-runner
           priorityClassName: gpu-batch
           nodeSelector:
