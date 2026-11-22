@@ -96,8 +96,8 @@ grep -q 'kubernetes.io/hostname: k8s-node-max-01' <<<"$f" || fail "freecad-sweep
 grep -A3 'tolerations:' <<<"$f" | grep -q 'key: ollama' || fail "freecad-sweep: must tolerate max-01's ollama taint"
 grep -q 'nvidia.com/gpu' <<<"$f" && fail "freecad-sweep: CPU-only; a GPU would also re-enable the print guard"
 grep -A1 'name: GPU_BATCH_PRINT_GUARD' <<<"$f" | grep -q 'value: "off"' || fail "freecad-sweep: GPU_BATCH_PRINT_GUARD must be \"off\" (no GPU to protect)"
-grep -A3 'requests:' <<<"$f" | grep -q 'memory: 14Gi' || fail "freecad-sweep: memory request 14Gi (homelab#2267: workers are sized to fill the limit)"
-limits "$f" | grep -q 'memory: 16Gi' || fail "freecad-sweep: memory limit 16Gi (homelab#2267: lite-35 OOMKilled at 12Gi)"
+grep -A3 'requests:' <<<"$f" | grep -q 'memory: 26Gi' || fail "freecad-sweep: memory request 26Gi (homelab#2267: workers are sized to fill the limit)"
+limits "$f" | grep -q 'memory: 30Gi' || fail "freecad-sweep: memory limit 30Gi (10 sweep workers at 2800 MB; lite-35 OOMKilled at 12Gi with 10)"
 
 # The work volume is the share the laptop mounts.
 pv=$(doc PersistentVolume)

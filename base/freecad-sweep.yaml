@@ -6,7 +6,7 @@
 # Bounds (homelab#1974):
 #   - k8s-node-max-01, tolerating its ollama=yes:NoSchedule taint (user
 #     decision, 2026-11-07). max-01's RAM is also the ollama GPU's model
-#     memory (architecture/gpu.md), so while a sweep runs, ollama has ~16Gi
+#     memory (architecture/gpu.md), so while a sweep runs, ollama has ~30Gi
 #     less headroom. node-03 (3 CPU / 16 GiB) cannot fit a 10-worker sweep.
 #   - cpu request 10, NO cpu limit (D-022): sweep_toolhead.py runs 10 workers.
 #   - memory request 10Gi / limit 12Gi, sized from measured cgroup
@@ -22,7 +22,14 @@
 #       lite-35, 4 workers: clashlib's own peaks, largest worker 2513 MB,
 #         parent 16 MB; memory.peak 8.0 GiB; sweep 11 min.
 #     Raised to request 14Gi / limit 16Gi (user, 2026-11-14): ~5-6 lite-35
-#     workers. homelab#2267 moves the submitter from its fixed 10 workers to
+#     workers.
+#     Raised to request 26Gi / limit 30Gi (user, 2026-11-22: "we need to speed
+#     the tools up, this waiting is causing blocks"). The lite-77 refresh's
+#     sweep ran 117 min on 5 workers (2800 MB each + 1000 reserve at 16Gi);
+#     at 30Gi the same budget gives 10 (the submitter's cap, = cpu request)
+#     and z_sweep 4 instead of 2. Room on max-01 (2026-11-22 12:45 PST):
+#     74Gi requested of ~125Gi allocatable with no sweep running, ollama's
+#     request 64Gi (qwen3-coder-next loaded: 52 GB). homelab#2267 moves the submitter from its fixed 10 workers to
 #     a count sized from this limit and the measured per-worker peak.
 #   - NO nvidia.com/gpu. GPU_BATCH_PRINT_GUARD=off therefore skips the print
 #     guard (gpu-batch-docker#9): the guard protects the GTX 970's VRAM,
@@ -121,9 +128,9 @@ spec:
               resources:
                 requests:
                   cpu: "10"
-                  memory: 14Gi
+                  memory: 26Gi
                 limits:
-                  memory: 16Gi
+                  memory: 30Gi
               volumeMounts:
                 - name: work
                   mountPath: /work
